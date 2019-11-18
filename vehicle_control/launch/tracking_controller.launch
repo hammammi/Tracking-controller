@@ -1,0 +1,7 @@
+<launch>
+
+  <node pkg="vehicle_control"
+        type="track_control"
+        name="tracking_control"/>
+
+</launch>
