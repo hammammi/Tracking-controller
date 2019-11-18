@@ -65,6 +65,7 @@ class tracking_controller{
     double multi_turn_phi_des = 0;
 
     double x_goal = 0, y_goal = 0;
+    double phi_goal = 0;
 
 
 
@@ -183,15 +184,11 @@ class tracking_controller{
        if(fabs(x_goal-x_robot)<0.1 && fabs(y_goal-y_robot)<0.1){
            x_err = (x_goal - x_robot) * cos(phi_robot[1]) - (y_goal-y_robot) * sin(phi_robot[1]);
            y_err = (x_goal - x_robot) * sin(phi_robot[1]) + (y_goal-y_robot) * cos(phi_robot[1]);
+           phi_err = phi_goal - phi_des[1];
            vx_cmd_robot = 0.1*K_p[1] * x_err;
            vy_cmd_robot = 0.1*K_p[2] * y_err;
-           vphi_cmd_robot = K_p[3] * phi_err;
-           ROS_INFO("x_goal : %lf",x_goal);
-
+           vphi_cmd_robot = 5*K_p[3] * phi_err;
        }
-
-    
-
     }
 
     motor_vel inverse_kinematics(){
@@ -203,13 +200,12 @@ class tracking_controller{
         m.w[3] = (int) 1.0/r * vx_cmd_robot + 1.0/r * vy_cmd_robot - l/r * vphi_cmd_robot;
 
         // In the error boundary, stop the motor
-        if(fabs(x_err)<0.02 && fabs(y_err)<0.02 && fabs(phi_err)<0.01){
+        if(fabs(x_err)<0.02 && fabs(y_err)<0.02 && fabs(phi_err)<0.02){
             m.w[0] = (int) 0;
             m.w[1] = (int) 0;
             m.w[2] = (int) 0;
             m.w[3] = (int) 0;
         }
-        
 
         return m;
     }
@@ -318,6 +314,7 @@ class tracking_controller{
     void callback_goal(const PoseStamped::ConstPtr& goal_msg){
         x_goal = goal_msg->pose.position.x;
         y_goal = goal_msg->pose.position.y;
+        phi_goal = goal_msg ->pose.orientation.z;
     }
 
 
@@ -342,7 +339,6 @@ class tracking_controller{
         return multi_turn_angle;
     }
 
-
     private:
 
     ros::NodeHandle nh_;
@@ -352,7 +348,5 @@ class tracking_controller{
     ros::Subscriber subscriber_goal;
 
     ros::Publisher publisher_cmd_vel;
-            
-    
 
 };
