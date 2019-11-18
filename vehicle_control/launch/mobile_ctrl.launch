@@ -1,0 +1,14 @@
+<launch>
+
+  <group ns="controller_group">
+    <node pkg="vehicle_control" 
+          type="encoder" 
+          name="cmd_pub"/>
+
+    <node pkg="vehicle_control"
+          type="vehicle_controller"
+          name="control"/>
+
+  </group>
+
+</launch>

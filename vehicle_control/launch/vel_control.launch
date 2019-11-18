@@ -1,0 +1,7 @@
+<launch>
+
+    <node pkg="vehicle_control"
+          type="vel_cmd"
+          name="control"/>
+
+</launch>

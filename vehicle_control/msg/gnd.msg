@@ -1,0 +1,9 @@
+float64 x_gnd
+float64 y_gnd
+float64 q_x
+float64 q_y
+float64 q_z
+float64 q_w
+float64 vel_x
+float64 vel_y
+float64 vel_phi
