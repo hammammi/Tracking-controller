@@ -1,12 +1,12 @@
 # Tracking-controller
 
-In the include folder
+Header file directory : sim_control/include/tracking_controller_rev.hpp
 
-tracking_control.hpp
+Source file directory : sim_control/src/tracking_controller_rev.cpp
 
 wheel separation info
 --> l_a , and l_b
 
-launch :
+Execution
 
-$ roslaunch vehicle_control tracking_controller.launch
+$ roslaunch sim_control tracking_controller_rev
