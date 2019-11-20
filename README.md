@@ -15,5 +15,4 @@ change wheel_separation_info - l_a, l_b
 launch :
 Execution of tracking controller
 
-$ roslaunch vehicle_control tracking_controller.launch
 $ rosrun sim_control tracking_controller_rev
