@@ -1,0 +1,28 @@
+<launch>
+    <node pkg="sim_control"
+          type="motor_dynamics"
+          name="motor_dynamics"/>
+
+    <remap from="/camera/rgb/image" to="/rgb/image"/>
+    <remap from="/camera/rgb/camera_info" to="/rgb/camera_info"/>
+    <remap from="/camera/depth/image" to="/depth/image"/>
+    <remap from="/camera/depth/camera_info" to="/depth/camera_info"/>
+
+    <!-- Position controller -->
+    <node pkg="sim_control"
+          type="simulation_controller"
+          name="sim_controller"/>
+
+    <!-- ground truth -->
+    <node pkg="sim_control"
+          type="gnd_truth"
+          name="ground_truth"/>
+
+    <!-- RGB-D Odometry
+    <node pkg="rtabmap_ros" type="rgbd_odometry" name="rgbd_odometry" output="screen">
+      <param name="frame_id" type="string" value="base_link"/>
+      <remap from="odom" to="/kinect/odom"/>
+    </node>
+    -->
+
+</launch>
