@@ -89,8 +89,8 @@ class tracking_controller{
     double dt = 0;
 
     // Controller Gain
-    const double K_v[3] = {10.0,10.0,1.0};
-    const double K_p[3] = {0.8,0.8,0.5};
+    const double K_v[3] = {2.0,2.0,1.0};
+    const double K_p[3] = {4.0,4.0,2.1};
     // Error : linear vel, angular vel, position, orientation
     double vx_err = 0, vy_err = 0, vphi_err = 0;
     double x_err = 0, y_err = 0, phi_err = 0;
@@ -146,17 +146,15 @@ class tracking_controller{
         y_err    = (x_des - x_robot)*sin(phi_robot[1]) + (y_des - y_robot)*cos(phi_robot[1]);
         phi_err  = multi_turn_phi_des - multi_turn_phi_robot;
 
-       vx_cmd = K_v[1] * vx_err + K_p[1] * x_err;
-       vy_cmd = K_v[2] * vy_err + K_p[1] * y_err;
-       vphi_cmd = K_v[2] * vphi_err + K_p[1] * phi_err;
+       vx_cmd = K_v[0] * vx_err + K_p[0] * x_err;
+       vy_cmd = K_v[1] * vy_err + K_p[1] * y_err;
+       vphi_cmd = K_v[2] * vphi_err + K_p[2] * phi_err;
     
        vx_cmd_robot = vx_cmd;
        vy_cmd_robot = vy_cmd;
        vphi_cmd_robot = vphi_cmd;
 
-        ROS_INFO("x_err : %lf y_err : %lf phi_err : %lf",x_err,y_err,phi_err);
-
-       if(fabs(x_goal-x_robot)<0.1 && fabs(y_goal-y_robot)<0.1){
+       if(fabs(x_goal-x_robot)<0.5 && fabs(y_goal-y_robot)<0.5){
            x_err = (x_goal - x_robot) * cos(phi_robot[1]) - (y_goal-y_robot) * sin(phi_robot[1]);
            y_err = (x_goal - x_robot) * sin(phi_robot[1]) + (y_goal-y_robot) * cos(phi_robot[1]);
            
@@ -172,24 +170,13 @@ class tracking_controller{
                phi_err = 2*M_PI + phi_goal  - phi_robot[1];
            }
            
-           vx_cmd_robot = 0.3*K_p[0] * x_err;
-           vy_cmd_robot = 0.3*K_p[1] * y_err;
-           vphi_cmd_robot = 1.5*K_p[2] * phi_err;
+           vx_cmd_robot = 0.1*K_p[0] * x_err;
+           vy_cmd_robot = 0.1*K_p[1] * y_err;
+           vphi_cmd_robot = 0.5*K_p[2] * phi_err;
            ROS_INFO("Near Goal Position : x_err : %lf y_err : %lf phi_err : %lf",x_err,y_err,phi_err);
            ROS_INFO("vphi_cmd_robot : %lf",vphi_cmd_robot);
 
        }
-
-        // Loop time
-        current_time = ros::Time::now().toSec();
-        if(last_time == 0)
-        {
-            dt = 0;
-        }
-
-        dt = current_time - last_time;
-
-        last_time = current_time;
 
         // Inverse Kinematics
         cmd_motor_vel = inverse_kinematics();
@@ -208,13 +195,7 @@ class tracking_controller{
             motor_vel.omega3 = (int) cmd_motor_vel.w[2];
             motor_vel.omega4 = (int) cmd_motor_vel.w[3];
 
-        // In the error boundary, stop the motor
-        if(fabs(x_err)<0.04 && fabs(y_err)<0.04 && fabs(phi_err)<0.1){
-            motor_vel.omega1 = 0;
-            motor_vel.omega2 = 0;
-            motor_vel.omega3 = 0;
-            motor_vel.omega4 = 0;
-        }
+
 
         publisher_cmd_vel.publish(motor_vel);
     
@@ -270,7 +251,7 @@ class tracking_controller{
         vy_ = r/4.0 * (-clamped_motor_vel.w[0] + clamped_motor_vel.w[1] - clamped_motor_vel.w[2] + clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
         vphi_ = r/4.0/l * (-clamped_motor_vel.w[0] + clamped_motor_vel.w[1] + clamped_motor_vel.w[2] - clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
         
-
+        ROS_INFO("vx_cmd_robot : %lf vy_cmd_robot : %lf vphi_cmd_robot : %lf",vx_,vy_,vphi_);
         //ROS_INFO("Robot vel - vx : %lf, vy : %lf vphi : %lf",vx_,vy_,vphi_);
         //ROS_INFO("vphi_ : %lf vphi_des : %lf phi_err : %lf",vphi_,vphi_des,phi_err);
         return clamped_motor_vel;
