@@ -17,7 +17,6 @@ obtain the motor velocities.
 Find out the maximum motor velocity and then clampping
 
 **/
-
 #include "ros/ros.h"
 #include <iostream>
 #include <math.h>
@@ -25,10 +24,12 @@ Find out the maximum motor velocity and then clampping
 #include <algorithm>
 
 #include <teb_local_planner/FeedbackMsg.h>
+#include <teb_local_planner/TrajectoryPointMsg.h>
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <mobile_control/motorMsg.h>
 #include <sim_control/desiredMsg.h>
+#include <tf/transform_listener.h>
 
 
 #define _USE_MATH_DEFINES
@@ -47,6 +48,9 @@ class tracking_controller{
 
 
     public:
+
+    bool control_enable = false;
+    bool init_pos = true;
     // Robot index
     uint16_t robot_index = 0;
 
@@ -89,8 +93,9 @@ class tracking_controller{
     double dt = 0;
 
     // Controller Gain
-    const double K_v[3] = {2.0,2.0,1.0};
-    const double K_p[3] = {4.0,4.0,2.1};
+    const double K_v[3] = {0.5,0.5,0.5};
+    const double K_p[3] = {1.0,1.0,1.0};
+
     // Error : linear vel, angular vel, position, orientation
     double vx_err = 0, vy_err = 0, vphi_err = 0;
     double x_err = 0, y_err = 0, phi_err = 0;
@@ -103,7 +108,7 @@ class tracking_controller{
     double vx_cmd_robot = 0, vy_cmd_robot = 0, vphi_cmd_robot = 0;
 
     // Clamping info : Limited motor vel = 6000 RPM
-    const int motor_vel_lim = 6000; 
+    const int motor_vel_lim = 2000; 
 
     // Commend motor velocity
     motor_vel cmd_motor_vel;
@@ -114,21 +119,22 @@ class tracking_controller{
     const double gear_ratio = 74.5;
     const double radps_to_rpm = 60.0/2.0/M_PI;
     const double rpm_to_radps = 2.0*M_PI/60.0;
-    const double l_a = 0.2680;
-    const double l_b = 0.2600;
+    const double l_a = 0.2170;
+    const double l_b = 0.1687;
     const double l = l_a + l_b;
 
     // Publisher Declaration
     void cmd_vel_pub_setting(){
         publisher_desired_traj = nh_.advertise<desiredMsg>("/des_traj",1);
         publisher_cmd_vel = nh_.advertise<mobile_control::motorMsg>("/input_msg",1);
+        publisher_slam_pose = nh_.advertise<nav_msgs::Odometry>("/slam_pose",1);
     }
 
 
     // Subscriber Declaration
     void subscriber_declaration(){
         // Subscribe
-        subscriber_state = nh_.subscribe("/odom",1,&tracking_controller::callback_state,this);
+        subscriber_state = nh_.subscribe("/camera/odom/sample",1,&tracking_controller::callback_state,this);
         subscriber_trajectory = nh_.subscribe("/move_base/TebLocalPlannerROS/teb_feedback",1,&tracking_controller::callback_traj,this);
         subscriber_goal = nh_.subscribe("/move_base_simple/goal",1,&tracking_controller::callback_goal,this);
     }
@@ -144,8 +150,9 @@ class tracking_controller{
         // Position and orientation error
         x_err    = (x_des - x_robot)*cos(phi_robot[1]) - (y_des - y_robot)*sin(phi_robot[1]);
         y_err    = (x_des - x_robot)*sin(phi_robot[1]) + (y_des - y_robot)*cos(phi_robot[1]);
-        phi_err  = multi_turn_phi_des - multi_turn_phi_robot;
+        //phi_err  = multi_turn_phi_des - multi_turn_phi_robot;
 
+        phi_err = phi_goal - phi_robot[1];
        vx_cmd = K_v[0] * vx_err + K_p[0] * x_err;
        vy_cmd = K_v[1] * vy_err + K_p[1] * y_err;
        vphi_cmd = K_v[2] * vphi_err + K_p[2] * phi_err;
@@ -154,27 +161,41 @@ class tracking_controller{
        vy_cmd_robot = vy_cmd;
        vphi_cmd_robot = vphi_cmd;
 
-       if(fabs(x_goal-x_robot)<0.5 && fabs(y_goal-y_robot)<0.5){
+       if(fabs(x_goal-x_robot)>0.10 && fabs(y_goal-y_robot)>0.10){
+           control_enable = false;
+       }else{
+           control_enable = true;
+       }
+
+       if(control_enable){
+           tf::StampedTransform transform;
+           control_enable = true;
+           try{
+            listener_.lookupTransform("map","base_footprint",ros::Time(0),transform);
+            x_robot = transform.getOrigin().x();
+            y_robot = transform.getOrigin().y();
+            ROS_INFO("x_robot : %lf y_robot : %lf",x_robot,y_robot);
+            tf::Quaternion quat = transform.getRotation();
+            phi_robot[1] = tf::getYaw(quat);
+
+           }
+           catch(tf::TransformException &ex)
+           {
+               ROS_ERROR("%s",ex.what());
+               ros::Duration(1.0).sleep();
+           }
+           
            x_err = (x_goal - x_robot) * cos(phi_robot[1]) - (y_goal-y_robot) * sin(phi_robot[1]);
            y_err = (x_goal - x_robot) * sin(phi_robot[1]) + (y_goal-y_robot) * cos(phi_robot[1]);
            
            phi_err = phi_goal - phi_robot[1];
            
-           if(phi_goal > M_PI/2.0 && phi_robot[1] < - M_PI/2.0)
-           {
-               phi_err = phi_goal - (2*M_PI + phi_robot[1]);
-           }
-           
-           if(phi_goal < -M_PI/2.0 && phi_robot[1] >  M_PI/2.0)
-           {
-               phi_err = 2*M_PI + phi_goal  - phi_robot[1];
-           }
            
            vx_cmd_robot = 0.1*K_p[0] * x_err;
            vy_cmd_robot = 0.1*K_p[1] * y_err;
            vphi_cmd_robot = 0.5*K_p[2] * phi_err;
-           ROS_INFO("Near Goal Position : x_err : %lf y_err : %lf phi_err : %lf",x_err,y_err,phi_err);
-           ROS_INFO("vphi_cmd_robot : %lf",vphi_cmd_robot);
+
+           ROS_INFO("phi_goal : %lf",phi_goal);
 
        }
 
@@ -190,6 +211,15 @@ class tracking_controller{
                          
             cmd_motor_vel = clamping(cmd_motor_vel);
 
+            if(sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot))<0.005 && fabs(phi_robot[1]-phi_goal)<0.008){
+                cmd_motor_vel.w[0] = 0;
+                cmd_motor_vel.w[1] = 0;
+                cmd_motor_vel.w[2] = 0;
+                cmd_motor_vel.w[3] = 0;
+                ROS_INFO("Stop");
+                ROS_INFO("distance error : %lf phi_err : %lf",sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot)),fabs(phi_robot[1]-phi_goal)*180/M_PI);
+            }
+
             motor_vel.omega1 = (int) cmd_motor_vel.w[0];
             motor_vel.omega2 = (int) cmd_motor_vel.w[1];
             motor_vel.omega3 = (int) cmd_motor_vel.w[2];
@@ -199,6 +229,24 @@ class tracking_controller{
 
         publisher_cmd_vel.publish(motor_vel);
     
+
+    }
+
+    void publish_slam_pose(){
+        nav_msgs::Odometry slam_pose;
+        tf::StampedTransform Transform;
+        try{
+            listener_.lookupTransform("map","base_footprint",ros::Time(0),Transform);
+        }
+        catch(tf::TransformException ex){
+            ROS_ERROR("%s",ex.what());
+            ros::Duration(1.0).sleep();
+        }
+
+        slam_pose.pose.pose.position.x = Transform.getOrigin().x();
+        slam_pose.pose.pose.position.y = Transform.getOrigin().y();
+        tf::Quaternion quat = Transform.getRotation();
+        phi_robot[1] = tf::getYaw(quat);
 
     }
 
@@ -251,7 +299,7 @@ class tracking_controller{
         vy_ = r/4.0 * (-clamped_motor_vel.w[0] + clamped_motor_vel.w[1] - clamped_motor_vel.w[2] + clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
         vphi_ = r/4.0/l * (-clamped_motor_vel.w[0] + clamped_motor_vel.w[1] + clamped_motor_vel.w[2] - clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
         
-        ROS_INFO("vx_cmd_robot : %lf vy_cmd_robot : %lf vphi_cmd_robot : %lf",vx_,vy_,vphi_);
+        //ROS_INFO("vx_cmd_robot : %lf vy_cmd_robot : %lf vphi_cmd_robot : %lf",vx_,vy_,vphi_);
         //ROS_INFO("Robot vel - vx : %lf, vy : %lf vphi : %lf",vx_,vy_,vphi_);
         //ROS_INFO("vphi_ : %lf vphi_des : %lf phi_err : %lf",vphi_,vphi_des,phi_err);
         return clamped_motor_vel;
@@ -261,35 +309,49 @@ class tracking_controller{
 
 
     // Callback function 1 : Trajectory from planner
-    void callback_traj(const FeedbackMsg::ConstPtr& traj_msg){
+    void callback_traj(const TrajectoryPointMsg::ConstPtr& traj_msg){
         
         // Robot index
-        robot_index = traj_msg -> selected_trajectory_idx;
+        //robot_index = traj_msg -> selected_trajectory_idx;
         
-        int traj_index = 1;
+        //int traj_index = 1;
 
-        size_of_traj = traj_msg ->trajectories[robot_index].trajectory.size();
+        //size_of_traj = traj_msg ->trajectories[robot_index].trajectory.size();
 
         // Desired acceleration
-        ax_des =traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.linear.x;
-        ay_des =traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.linear.y;
-        aphi_des =traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.angular.z;
+        //ax_des =traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.linear.x;
+        //ay_des =traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.linear.y;
+        //aphi_des =traj_msg->trajectories[robot_index].trajectory[traj_index].acceleration.angular.z;
        
 
         // Desired velocity
-        vx_des = traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.linear.x;
-        vy_des = traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.linear.y;
-        vphi_des = traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.angular.z;
+        //vx_des = traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.linear.x;
+        //vy_des = traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.linear.y;
+        //vphi_des = traj_msg->trajectories[robot_index].trajectory[traj_index].velocity.angular.z;
 
         // Desired position
-        x_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.position.x;
-        y_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.position.y;
+        //x_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.position.x;
+        //y_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.position.y;
         
         // Desired orientation
-        qw_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.w;
-        qx_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.x;
-        qy_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.y;
-        qz_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.z;
+        //qw_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.w;
+        //qx_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.x;
+        //qy_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.y;
+        //qz_des = traj_msg->trajectories[robot_index].trajectory[traj_index].pose.orientation.z;
+        
+
+
+        vx_des = traj_msg -> velocity.linear.x;
+        vy_des = traj_msg -> velocity.linear.y;
+
+        x_des = traj_msg -> pose.position.x;
+        y_des = traj_msg -> pose.position.y;
+
+        qx_des = traj_msg -> pose.orientation.x;
+        qy_des = traj_msg -> pose.orientation.y;
+        qz_des = traj_msg -> pose.orientation.z;
+        qw_des = traj_msg -> pose.orientation.w;
+        
         
 
         phi_des[0] = phi_des[1];
@@ -367,6 +429,7 @@ class tracking_controller{
     private:
 
     ros::NodeHandle nh_;
+    tf::TransformListener listener_;
 
     ros::Subscriber subscriber_trajectory;
     ros::Subscriber subscriber_state;
@@ -374,7 +437,7 @@ class tracking_controller{
 
     ros::Publisher publisher_cmd_vel;
     ros::Publisher publisher_desired_traj;
+    ros::Publisher publisher_slam_pose;
             
-    
 
 };
