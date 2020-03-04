@@ -4,7 +4,7 @@ In the include folder
 
 Header file directory - /sim_control/include/sim_control/tracking_controller_rev.hpp
 
-tracking_control.hpp
+tracking_control_rev.hpp
 
 Source file directory - /sim_control/src/tracking_controller_rev.cpp
 
