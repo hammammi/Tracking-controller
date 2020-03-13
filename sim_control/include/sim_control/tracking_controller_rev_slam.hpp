@@ -99,7 +99,7 @@ class tracking_controller{
     double multi_turn_phi_robot = 0;
 
     // Controller Gain
-    const double K_v[3] = {0.5,0.5,0.5};
+    const double K_v[3] = {0.3,0.3,0.3};
     const double K_p[3] = {1.0,1.0,1.0};
     const double K_i[3] = {0.01,0.01,0.01};
 
@@ -116,7 +116,7 @@ class tracking_controller{
     double vx_cmd_robot = 0, vy_cmd_robot = 0, vphi_cmd_robot = 0;
 
     // Clamping info : Limited motor vel = 6000 RPM
-    const int motor_vel_lim = 2000; 
+    const int motor_vel_lim = 3000; 
 
     // Commend motor velocity
     motor_vel cmd_motor_vel;
@@ -158,7 +158,8 @@ class tracking_controller{
         // Put the raw velocity data into the raw velocity vector data
         vx_raw_vector.push_back(vx_raw);
         vy_raw_vector.push_back(vy_raw);
-        
+        vphi_raw_vector.push_back(vphi_raw);
+
         // Take moving Average velocity
         for(auto it = vx_raw_vector.begin(); it != vx_raw_vector.end();++it)
         {
@@ -171,7 +172,7 @@ class tracking_controller{
         vphi_robot /= vphi_raw_vector.size();
 
         // Check the size of velocity vector
-        if(size_of_moving_average >= size_of_moving_average)
+        if(size_of_moving_average < vx_raw_vector.size())
         {
             vx_raw_vector.erase(vx_raw_vector.begin());
             vy_raw_vector.erase(vy_raw_vector.begin());
@@ -253,7 +254,7 @@ class tracking_controller{
                          
             cmd_motor_vel = clamping(cmd_motor_vel);
 
-            if(sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot))<0.020 && fabs(phi_robot[1]-phi_goal)<0.008 || init_pos == true){
+            if(sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot))<0.020 && fabs(phi_robot[1]-phi_goal)<0.01 || init_pos == true){
                 cmd_motor_vel.w[0] = 0;
                 cmd_motor_vel.w[1] = 0;
                 cmd_motor_vel.w[2] = 0;
@@ -263,7 +264,7 @@ class tracking_controller{
                 y_accumul_err = 0;
                 phi_accumul_err = 0;
 
-                //init_pos = true;
+                init_pos = true;
 
                 ROS_INFO("Stop");
                 ROS_INFO("distance error : %lf phi_err : %lf",sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot)),fabs(phi_robot[1]-phi_goal)*180/M_PI);
@@ -276,9 +277,9 @@ class tracking_controller{
             
             error_msg.pose.pose.position.x = x_err;
             error_msg.pose.pose.position.y = y_err;
-            // Twist --> accumulated error
-            error_msg.twist.twist.linear.x = x_accumul_err;
-            error_msg.twist.twist.linear.y = y_accumul_err;
+            // Twist --> Moving average velocity to check
+            error_msg.twist.twist.linear.x = vx_robot;
+            error_msg.twist.twist.linear.y = vy_robot;
 
             //Publish control input msg
             publisher_cmd_vel.publish(motor_vel);
