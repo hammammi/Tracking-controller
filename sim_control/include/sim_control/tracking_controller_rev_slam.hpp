@@ -83,7 +83,6 @@ class tracking_controller{
     double vx_raw = 0, vy_raw = 0, vphi_raw = 0;
     
     int size_of_moving_average = 10;
-    bool is_size_of_moving_average = false;
 
     std::vector <double> vx_raw_vector;
     std::vector <double> vy_raw_vector;
@@ -155,6 +154,30 @@ class tracking_controller{
 
         curr_time = ros::Time::now().toSec();
         dt = curr_time - last_time;
+
+        // Put the raw velocity data into the raw velocity vector data
+        vx_raw_vector.push_back(vx_raw);
+        vy_raw_vector.push_back(vy_raw);
+        
+        // Take moving Average velocity
+        for(auto it = vx_raw_vector.begin(); it != vx_raw_vector.end();++it)
+        {
+            vx_robot += vx_raw_vector[*it];
+            vy_robot += vy_raw_vector[*it];
+            vphi_robot += vphi_raw_vector[*it];
+        }
+        vx_robot /= vx_raw_vector.size();
+        vy_robot /= vy_raw_vector.size();
+        vphi_robot /= vphi_raw_vector.size();
+
+        // Check the size of velocity vector
+        if(size_of_moving_average >= size_of_moving_average)
+        {
+            vx_raw_vector.erase(vx_raw_vector.begin());
+            vy_raw_vector.erase(vy_raw_vector.begin());
+            vphi_raw_vector.erase(vphi_raw_vector.begin());    
+        }
+
 
         tf::StampedTransform transform;
 
@@ -230,7 +253,7 @@ class tracking_controller{
                          
             cmd_motor_vel = clamping(cmd_motor_vel);
 
-            if(sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot))<0.005 && fabs(phi_robot[1]-phi_goal)<0.008 || init_pos == true){
+            if(sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot))<0.020 && fabs(phi_robot[1]-phi_goal)<0.008 || init_pos == true){
                 cmd_motor_vel.w[0] = 0;
                 cmd_motor_vel.w[1] = 0;
                 cmd_motor_vel.w[2] = 0;
