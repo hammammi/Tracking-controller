@@ -50,7 +50,7 @@ class tracking_controller{
 
     public:
 
-    bool slam_pose_feedback_enable = false;
+    bool regulation_control_enable = false;
     bool init_pos = true;
     // Robot index
     uint16_t robot_index = 0;
@@ -196,7 +196,7 @@ class tracking_controller{
             ROS_ERROR("%s",ex.what());
             ros::Duration(1.0).sleep();
         }
-        // 1. Feedback Control via camera odom (T265) 
+        // 1. Tracking Controller
         // Vel error
         vx_err   = (vx_des - vx_robot);
         vy_err   = (vy_des - vy_robot);
@@ -206,8 +206,8 @@ class tracking_controller{
         x_err    = (x_des - x_robot)*cos(phi_robot[1]) - (y_des - y_robot)*sin(phi_robot[1]);
         y_err    = (x_des - x_robot)*sin(phi_robot[1]) + (y_des - y_robot)*cos(phi_robot[1]);
         //phi_err  = multi_turn_phi_des - multi_turn_phi_robot;
-
         phi_err = phi_goal - phi_robot[1];
+
         vx_cmd = K_v[0] * vx_err + K_p[0] * x_err;
         vy_cmd = K_v[1] * vy_err + K_p[1] * y_err;
         vphi_cmd = K_v[2] * vphi_err + K_p[2] * phi_err;
@@ -217,16 +217,16 @@ class tracking_controller{
         vphi_cmd_robot = vphi_cmd;
 
         if(sqrt(pow(x_goal-x_robot,2)+pow(y_goal-y_robot,2))>0.50){
-            slam_pose_feedback_enable = false;
+            regulation_control_enable = false;
         }else{
-            slam_pose_feedback_enable = true;
+            regulation_control_enable = true;
         }
 
-        // 2. Feedback through Odom corrected by Lidar(Velodyne 16 vlp)
-        if(slam_pose_feedback_enable){
+        // 2. Regulation controller
+        if(regulation_control_enable){
 
            tf::StampedTransform transform;
-           slam_pose_feedback_enable = true;
+           regulation_control_enable = true;
 
            x_accumul_err += x_err * dt;
            y_accumul_err += y_err * dt;
