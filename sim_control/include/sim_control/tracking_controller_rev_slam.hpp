@@ -82,7 +82,7 @@ class tracking_controller{
     // it is necessary to process the raw velocity data
     double vx_raw = 0, vy_raw = 0, vphi_raw = 0;
     
-    int size_of_moving_average = 10;
+    int size_of_moving_average = 20;
 
     std::vector <double> vx_raw_vector;
     std::vector <double> vy_raw_vector;
@@ -99,7 +99,7 @@ class tracking_controller{
     double multi_turn_phi_robot = 0;
 
     // Controller Gain
-    const double K_v[3] = {0.3,0.3,0.3};
+    const double K_v[3] = {0.5,0.5,0.5};
     const double K_p[3] = {1.0,1.0,1.0};
     const double K_i[3] = {0.01,0.01,0.01};
 
@@ -133,7 +133,7 @@ class tracking_controller{
 
     // Publisher Declaration
     void cmd_vel_pub_setting(){
-        publisher_desired_traj = nh_.advertise<desiredMsg>("/des_traj",1);
+        publisher_desired_traj = nh_.advertise<nav_msgs::Odometry>("/des_traj",1);
         publisher_cmd_vel = nh_.advertise<mobile_control::motorMsg>("/input_msg",1);
         publisher_slam_pose = nh_.advertise<nav_msgs::Odometry>("/slam_pose",1);
         publisher_error = nh_.advertise<nav_msgs::Odometry>("/error_msg",1);
@@ -155,18 +155,25 @@ class tracking_controller{
         curr_time = ros::Time::now().toSec();
         dt = curr_time - last_time;
 
+        // Initialize robot velocity
+        vx_robot = 0;
+        vy_robot = 0;
+        vphi_robot = 0;
+
         // Put the raw velocity data into the raw velocity vector data
         vx_raw_vector.push_back(vx_raw);
         vy_raw_vector.push_back(vy_raw);
         vphi_raw_vector.push_back(vphi_raw);
 
         // Take moving Average velocity
-        for(auto it = vx_raw_vector.begin(); it != vx_raw_vector.end();++it)
+        for(int i = 0; i < vx_raw_vector.size();i++)
         {
-            vx_robot += vx_raw_vector[*it];
-            vy_robot += vy_raw_vector[*it];
-            vphi_robot += vphi_raw_vector[*it];
+            vx_robot += vx_raw_vector[i];
+            vy_robot += vy_raw_vector[i];
+            vphi_robot += vphi_raw_vector[i];
+            
         }
+        
         vx_robot /= vx_raw_vector.size();
         vy_robot /= vy_raw_vector.size();
         vphi_robot /= vphi_raw_vector.size();
@@ -313,18 +320,14 @@ class tracking_controller{
     }
 
     void desired_traj(){
-        desiredMsg desired_traj_msg;
-        
-        desired_traj_msg.x_des = x_des;
-        desired_traj_msg.y_des = y_des;
-
-        desired_traj_msg.vx_des = vx_des;
-        desired_traj_msg.vy_des = vy_des;
-
-        desired_traj_msg.phi_des = multi_turn_phi_des;
-
+        nav_msgs::Odometry des_traj;
+        des_traj.pose.pose.position.x = x_des;
+        des_traj.pose.pose.position.y = y_des;
+        des_traj.twist.twist.linear.x = vx_des;
+        des_traj.twist.twist.linear.y = vy_des;
+        des_traj.twist.twist.angular.z = vphi_des;
         // Publish Desired Trajectory 
-        publisher_desired_traj.publish(desired_traj_msg);
+        publisher_desired_traj.publish(des_traj);
     }
 
     motor_vel inverse_kinematics(){
