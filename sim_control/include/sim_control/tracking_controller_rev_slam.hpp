@@ -75,19 +75,6 @@ class tracking_controller{
     int index_multi_turn_phi_goal = 0;
     double multi_turn_phi_goal = 0;
 
-
-
-    // Raw velocity which is higly noisy
-    // Since raw velocity influences badly on the tracking controller,
-    // it is necessary to process the raw velocity data
-    double vx_raw = 0, vy_raw = 0, vphi_raw = 0;
-    
-    int size_of_moving_average = 20;
-
-    std::vector <double> vx_raw_vector;
-    std::vector <double> vy_raw_vector;
-    std::vector <double> vphi_raw_vector;
-
     // Robot State : velocity, position, and orientation
     double vx_robot = 0, vy_robot = 0, vphi_robot = 0;
     double x_robot = 0, y_robot = 0;
@@ -154,37 +141,6 @@ class tracking_controller{
 
         curr_time = ros::Time::now().toSec();
         dt = curr_time - last_time;
-
-        // Initialize robot velocity
-        vx_robot = 0;
-        vy_robot = 0;
-        vphi_robot = 0;
-
-        // Put the raw velocity data into the raw velocity vector data
-        vx_raw_vector.push_back(vx_raw);
-        vy_raw_vector.push_back(vy_raw);
-        vphi_raw_vector.push_back(vphi_raw);
-
-        // Take moving Average velocity
-        for(int i = 0; i < vx_raw_vector.size();i++)
-        {
-            vx_robot += vx_raw_vector[i];
-            vy_robot += vy_raw_vector[i];
-            vphi_robot += vphi_raw_vector[i];
-            
-        }
-        
-        vx_robot /= vx_raw_vector.size();
-        vy_robot /= vy_raw_vector.size();
-        vphi_robot /= vphi_raw_vector.size();
-
-        // Check the size of velocity vector
-        if(size_of_moving_average < vx_raw_vector.size())
-        {
-            vx_raw_vector.erase(vx_raw_vector.begin());
-            vy_raw_vector.erase(vy_raw_vector.begin());
-            vphi_raw_vector.erase(vphi_raw_vector.begin());    
-        }
 
 
         tf::StampedTransform transform;
@@ -271,7 +227,7 @@ class tracking_controller{
                 y_accumul_err = 0;
                 phi_accumul_err = 0;
 
-                init_pos = true;
+                //init_pos = true;
 
                 ROS_INFO("Stop");
                 ROS_INFO("distance error : %lf phi_err : %lf",sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot)),fabs(phi_robot[1]-phi_goal)*180/M_PI);
@@ -440,9 +396,9 @@ class tracking_controller{
     void callback_state(const Odometry::ConstPtr& state_msg){
         
         // Robot Velocity 
-        vx_raw = state_msg -> twist.twist.linear.x;
-        vy_raw = state_msg -> twist.twist.linear.y;
-        vphi_raw = state_msg -> twist.twist.angular.z;
+        vx_robot = state_msg -> twist.twist.linear.x;
+        vy_robot = state_msg -> twist.twist.linear.y;
+        vphi_robot = state_msg -> twist.twist.angular.z;
 
         phi_robot[0] = phi_robot[1];
         // Conversion from Quaternion to euler angle
