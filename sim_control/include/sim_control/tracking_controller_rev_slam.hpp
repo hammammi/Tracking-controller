@@ -241,8 +241,8 @@ class tracking_controller{
             error_msg.pose.pose.position.x = x_err;
             error_msg.pose.pose.position.y = y_err;
             // Twist --> Moving average velocity to check
-            error_msg.twist.twist.linear.x = vx_robot;
-            error_msg.twist.twist.linear.y = vy_robot;
+            error_msg.twist.twist.linear.x = vx_err;
+            error_msg.twist.twist.linear.y = vy_err;
 
             //Publish control input msg
             publisher_cmd_vel.publish(motor_vel);
