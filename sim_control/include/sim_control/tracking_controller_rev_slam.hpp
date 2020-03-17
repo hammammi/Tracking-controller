@@ -86,7 +86,7 @@ class tracking_controller{
     double multi_turn_phi_robot = 0;
 
     // Controller Gain
-    const double K_v[3] = {0.5,0.5,0.5};
+    const double K_v[3] = {1.0,1.0,1.0};
     const double K_p[3] = {1.0,1.0,1.0};
     const double K_i[3] = {0.01,0.01,0.01};
 
@@ -130,7 +130,7 @@ class tracking_controller{
     // Subscriber Declaration
     void subscriber_declaration(){
         // Subscribe
-        subscriber_state = nh_.subscribe("/odom",1,&tracking_controller::callback_state,this);
+        subscriber_state = nh_.subscribe("/wheel_odom",1,&tracking_controller::callback_state,this);
         subscriber_trajectory = nh_.subscribe("/move_base/TebLocalPlannerROS/teb_feedback",1,&tracking_controller::callback_traj,this);
         subscriber_goal = nh_.subscribe("/move_base_simple/goal",1,&tracking_controller::callback_goal,this);
     }
