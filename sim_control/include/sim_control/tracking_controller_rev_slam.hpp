@@ -86,21 +86,21 @@ class tracking_controller{
     double multi_turn_phi_robot = 0;
 
     // Controller Gain
-    const double K_v[3] = {1.0,1.0,1.0};
-    const double K_p[3] = {1.0,1.0,1.0};
+    const double K_v[3] = {1.5,1.5,1.5};
+    const double K_p[3] = {3.0,3.0,3.0};
     const double K_i[3] = {0.01,0.01,0.01};
 
     // Error : linear vel, angular vel, position, orientation
-    double vx_err = 0, vy_err = 0, vphi_err = 0;
     double x_err = 0, y_err = 0, phi_err = 0;
+
+    double vx_accumul = 0, vy_accumul = 0, vphi_accumul = 0;
     double x_accumul_err = 0, y_accumul_err = 0, phi_accumul_err = 0;
 
     // Commend velocity in the global frame
     double ax_cmd = 0, ay_cmd = 0, aphi_cmd = 0;
-    double vx_cmd = 0, vy_cmd = 0, vphi_cmd = 0; 
 
-    // Commend velocity in the robot frame
-    double vx_cmd_robot = 0, vy_cmd_robot = 0, vphi_cmd_robot = 0;
+    // Commend Velocity
+    double vx_cmd = 0, vy_cmd = 0, vphi_cmd = 0;
 
     // Clamping info : Limited motor vel = 6000 RPM
     const int motor_vel_lim = 3000; 
@@ -130,7 +130,7 @@ class tracking_controller{
     // Subscriber Declaration
     void subscriber_declaration(){
         // Subscribe
-        subscriber_state = nh_.subscribe("/wheel_odom",1,&tracking_controller::callback_state,this);
+        subscriber_state = nh_.subscribe("/odom",1,&tracking_controller::callback_state,this);
         subscriber_trajectory = nh_.subscribe("/move_base/TebLocalPlannerROS/teb_feedback",1,&tracking_controller::callback_traj,this);
         subscriber_goal = nh_.subscribe("/move_base_simple/goal",1,&tracking_controller::callback_goal,this);
     }
@@ -161,10 +161,6 @@ class tracking_controller{
             ros::Duration(1.0).sleep();
         }
         // 1. Tracking Controller
-        // Vel error
-        vx_err   = (vx_des - vx_robot);
-        vy_err   = (vy_des - vy_robot);
-        vphi_err = vphi_des - vphi_robot;
 
         // Position and orientation error
         x_err    = (x_des - x_robot)*cos(phi_robot[1]) - (y_des - y_robot)*sin(phi_robot[1]);
@@ -172,13 +168,19 @@ class tracking_controller{
         //phi_err  = multi_turn_phi_des - multi_turn_phi_robot;
         phi_err = phi_goal - phi_robot[1];
 
-        vx_cmd = K_v[0] * vx_err + K_p[0] * x_err;
-        vy_cmd = K_v[1] * vy_err + K_p[1] * y_err;
-        vphi_cmd = K_v[2] * vphi_err + K_p[2] * phi_err;
-    
-        vx_cmd_robot = vx_cmd;
-        vy_cmd_robot = vy_cmd;
-        vphi_cmd_robot = vphi_cmd;
+                // Acceleration - Velocity error
+        ax_cmd   = K_v[0]*(vx_des - vx_robot) + K_p[0] * x_err;
+        ay_cmd   = K_v[1]*(vy_des - vy_robot) + K_p[1] * y_err;
+        aphi_cmd = K_v[2]*(vphi_des - vphi_robot) + K_p[2] * phi_err;
+
+        vx_accumul += ax_cmd * dt;
+        vy_accumul += ay_cmd * dt;
+        vphi_accumul += aphi_cmd * dt;
+
+        vx_cmd = vx_accumul + K_p[0] * x_err;
+        vy_cmd = vy_accumul + K_p[1] * y_err;
+        vphi_cmd = vphi_accumul + K_p[2] * phi_err;
+        
 
         if(sqrt(pow(x_goal-x_robot,2)+pow(y_goal-y_robot,2))>0.50){
             regulation_control_enable = false;
@@ -186,19 +188,23 @@ class tracking_controller{
             regulation_control_enable = true;
         }
 
+        //regulation_control_enable = false;
         // 2. Regulation controller
         if(regulation_control_enable){
 
            tf::StampedTransform transform;
            regulation_control_enable = true;
 
+            x_err    = (x_goal - x_robot)*cos(phi_robot[1]) - (y_goal - y_robot)*sin(phi_robot[1]);
+            y_err    = (x_goal - x_robot)*sin(phi_robot[1]) + (y_goal - y_robot)*cos(phi_robot[1]);
+
            x_accumul_err += x_err * dt;
            y_accumul_err += y_err * dt;
            phi_accumul_err += phi_accumul_err * dt;
            
-           vx_cmd_robot = K_p[0] * x_err + K_i[0] * x_accumul_err;
-           vy_cmd_robot = K_p[1] * y_err + K_i[1] * y_accumul_err;
-           vphi_cmd_robot = K_p[2] * phi_err + K_i[2] * phi_accumul_err;
+           vx_cmd = K_p[0] * x_err + K_i[0] * x_accumul_err;
+           vy_cmd = K_p[1] * y_err + K_i[1] * y_accumul_err;
+           vphi_cmd = K_p[2] * phi_err + K_i[2] * phi_accumul_err;
 
            ROS_INFO("dt : %lf",dt);
 
@@ -210,45 +216,96 @@ class tracking_controller{
         mobile_control::motorMsg motor_vel;
         nav_msgs::Odometry error_msg;
             // Unit conversion
-            cmd_motor_vel.w[0] = gear_ratio*radps_to_rpm*cmd_motor_vel.w[0];
-            cmd_motor_vel.w[1] = -gear_ratio*radps_to_rpm*cmd_motor_vel.w[1];
-            cmd_motor_vel.w[2] = -gear_ratio*radps_to_rpm*cmd_motor_vel.w[2];
-            cmd_motor_vel.w[3] = gear_ratio*radps_to_rpm*cmd_motor_vel.w[3];
+        cmd_motor_vel.w[0] = gear_ratio*radps_to_rpm*cmd_motor_vel.w[0];
+        cmd_motor_vel.w[1] = -gear_ratio*radps_to_rpm*cmd_motor_vel.w[1];
+        cmd_motor_vel.w[2] = -gear_ratio*radps_to_rpm*cmd_motor_vel.w[2];
+        cmd_motor_vel.w[3] = gear_ratio*radps_to_rpm*cmd_motor_vel.w[3];
                          
-            cmd_motor_vel = clamping(cmd_motor_vel);
+        cmd_motor_vel = clamping(cmd_motor_vel);
 
-            if(sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot))<0.020 && fabs(phi_robot[1]-phi_goal)<0.01 || init_pos == true){
-                cmd_motor_vel.w[0] = 0;
-                cmd_motor_vel.w[1] = 0;
-                cmd_motor_vel.w[2] = 0;
-                cmd_motor_vel.w[3] = 0;
+        if(sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot))<0.020 && fabs(phi_robot[1]-phi_goal)<0.01 || init_pos == true){
+            cmd_motor_vel.w[0] = 0;
+            cmd_motor_vel.w[1] = 0;
+            cmd_motor_vel.w[2] = 0;
+            cmd_motor_vel.w[3] = 0;
 
-                x_accumul_err = 0;
-                y_accumul_err = 0;
-                phi_accumul_err = 0;
+            x_accumul_err = 0;
+            y_accumul_err = 0;
+            phi_accumul_err = 0;
+
+            ax_cmd = 0;
+            ay_cmd = 0;
+            aphi_cmd = 0;
+
+            vx_accumul = 0;
+            vy_accumul = 0;
+            vphi_accumul = 0;
 
                 //init_pos = true;
 
-                ROS_INFO("Stop");
-                ROS_INFO("distance error : %lf phi_err : %lf",sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot)),fabs(phi_robot[1]-phi_goal)*180/M_PI);
-            }
+            ROS_INFO("Stop");
+            ROS_INFO("distance error : %lf phi_err : %lf",sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot)),fabs(phi_robot[1]-phi_goal)*180/M_PI);
+        }
 
-            motor_vel.omega1 = (int) cmd_motor_vel.w[0];
-            motor_vel.omega2 = (int) cmd_motor_vel.w[1];
-            motor_vel.omega3 = (int) cmd_motor_vel.w[2];
-            motor_vel.omega4 = (int) cmd_motor_vel.w[3];
+        motor_vel.omega1 = (int) cmd_motor_vel.w[0];
+        motor_vel.omega2 = (int) cmd_motor_vel.w[1];
+        motor_vel.omega3 = (int) cmd_motor_vel.w[2];
+        motor_vel.omega4 = (int) cmd_motor_vel.w[3];
             
-            error_msg.pose.pose.position.x = x_err;
-            error_msg.pose.pose.position.y = y_err;
-            // Twist --> Moving average velocity to check
-            error_msg.twist.twist.linear.x = vx_err;
-            error_msg.twist.twist.linear.y = vy_err;
+        error_msg.pose.pose.position.x = x_err;
+        error_msg.pose.pose.position.y = y_err;
+        
+        // Twist --> Moving average velocity to check
+        error_msg.twist.twist.linear.x = vx_cmd-vx_robot;
+        error_msg.twist.twist.linear.y = vy_cmd-vy_robot;
+        error_msg.twist.twist.angular.z = vphi_cmd-vphi_robot;
 
-            //Publish control input msg
-            publisher_cmd_vel.publish(motor_vel);
-            publisher_error.publish(error_msg);
+        //Publish control input msg
+        publisher_cmd_vel.publish(motor_vel);
+        publisher_error.publish(error_msg);
 
-            last_time = ros::Time::now().toSec();
+        last_time = ros::Time::now().toSec();
+    }
+
+    motor_vel inverse_kinematics(){
+        motor_vel m;
+
+        m.w[0] = (int) 1.0/r * vx_cmd - 1.0/r * vy_cmd - l/r * vphi_cmd;
+        m.w[1] = (int) 1.0/r * vx_cmd + 1.0/r * vy_cmd + l/r * vphi_cmd;
+        m.w[2] = (int) 1.0/r * vx_cmd - 1.0/r * vy_cmd + l/r * vphi_cmd;
+        m.w[3] = (int) 1.0/r * vx_cmd + 1.0/r * vy_cmd - l/r * vphi_cmd;
+
+        return m;
+    }
+
+    motor_vel clamping(motor_vel clamped_motor_vel){
+
+        double arr[4] = {clamped_motor_vel.w[0],clamped_motor_vel.w[1],clamped_motor_vel.w[2],clamped_motor_vel.w[3]};
+
+        double vx_;
+        double vy_;
+        double vphi_;
+
+        double motor_vel_max = 0;
+        std::sort(arr,arr+4,std::greater<double>());
+        motor_vel_max = arr[0];
+        
+        if(fabs(motor_vel_max)>motor_vel_lim){
+            clamped_motor_vel.w[0] = (double) motor_vel_lim/fabs(motor_vel_max) * clamped_motor_vel.w[0];
+            clamped_motor_vel.w[1] = (double) motor_vel_lim/fabs(motor_vel_max) * clamped_motor_vel.w[1];
+            clamped_motor_vel.w[2] = (double) motor_vel_lim/fabs(motor_vel_max) * clamped_motor_vel.w[2];
+            clamped_motor_vel.w[3] = (double) motor_vel_lim/fabs(motor_vel_max) * clamped_motor_vel.w[3];
+        }
+        
+        vx_ = r/4.0 * (clamped_motor_vel.w[0] + clamped_motor_vel.w[1] + clamped_motor_vel.w[2] + clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
+        vy_ = r/4.0 * (-clamped_motor_vel.w[0] + clamped_motor_vel.w[1] - clamped_motor_vel.w[2] + clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
+        vphi_ = r/4.0/l * (-clamped_motor_vel.w[0] + clamped_motor_vel.w[1] + clamped_motor_vel.w[2] - clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
+        
+        //ROS_INFO("vx_cmd : %lf vy_cmd : %lf vphi_cmd : %lf",vx_,vy_,vphi_);
+        //ROS_INFO("Robot vel - vx : %lf, vy : %lf vphi : %lf",vx_,vy_,vphi_);
+        //ROS_INFO("vphi_ : %lf vphi_des : %lf phi_err : %lf",vphi_,vphi_des,phi_err);
+        return clamped_motor_vel;
+        
     }
 
     void publish_slam_pose(){
@@ -285,49 +342,6 @@ class tracking_controller{
         // Publish Desired Trajectory 
         publisher_desired_traj.publish(des_traj);
     }
-
-    motor_vel inverse_kinematics(){
-        motor_vel m;
-
-        m.w[0] = (int) 1.0/r * vx_cmd_robot - 1.0/r * vy_cmd_robot - l/r * vphi_cmd_robot;
-        m.w[1] = (int) 1.0/r * vx_cmd_robot + 1.0/r * vy_cmd_robot + l/r * vphi_cmd_robot;
-        m.w[2] = (int) 1.0/r * vx_cmd_robot - 1.0/r * vy_cmd_robot + l/r * vphi_cmd_robot;
-        m.w[3] = (int) 1.0/r * vx_cmd_robot + 1.0/r * vy_cmd_robot - l/r * vphi_cmd_robot;
-
-        return m;
-    }
-
-    motor_vel clamping(motor_vel clamped_motor_vel){
-
-        double arr[4] = {clamped_motor_vel.w[0],clamped_motor_vel.w[1],clamped_motor_vel.w[2],clamped_motor_vel.w[3]};
-
-        double vx_;
-        double vy_;
-        double vphi_;
-
-        double motor_vel_max = 0;
-        std::sort(arr,arr+4,std::greater<double>());
-        motor_vel_max = arr[0];
-        
-        if(fabs(motor_vel_max)>motor_vel_lim){
-            clamped_motor_vel.w[0] = (double) motor_vel_lim/fabs(motor_vel_max) * clamped_motor_vel.w[0];
-            clamped_motor_vel.w[1] = (double) motor_vel_lim/fabs(motor_vel_max) * clamped_motor_vel.w[1];
-            clamped_motor_vel.w[2] = (double) motor_vel_lim/fabs(motor_vel_max) * clamped_motor_vel.w[2];
-            clamped_motor_vel.w[3] = (double) motor_vel_lim/fabs(motor_vel_max) * clamped_motor_vel.w[3];
-        }
-        
-        vx_ = r/4.0 * (clamped_motor_vel.w[0] + clamped_motor_vel.w[1] + clamped_motor_vel.w[2] + clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
-        vy_ = r/4.0 * (-clamped_motor_vel.w[0] + clamped_motor_vel.w[1] - clamped_motor_vel.w[2] + clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
-        vphi_ = r/4.0/l * (-clamped_motor_vel.w[0] + clamped_motor_vel.w[1] + clamped_motor_vel.w[2] - clamped_motor_vel.w[0])/gear_ratio*rpm_to_radps;
-        
-        //ROS_INFO("vx_cmd_robot : %lf vy_cmd_robot : %lf vphi_cmd_robot : %lf",vx_,vy_,vphi_);
-        //ROS_INFO("Robot vel - vx : %lf, vy : %lf vphi : %lf",vx_,vy_,vphi_);
-        //ROS_INFO("vphi_ : %lf vphi_des : %lf phi_err : %lf",vphi_,vphi_des,phi_err);
-        return clamped_motor_vel;
-        
-    }
-
-
 
     // Callback function 1 : Trajectory from planner
     void callback_traj(const TrajectoryPointMsg::ConstPtr& traj_msg){
@@ -389,7 +403,6 @@ class tracking_controller{
         double cosy_cosp = 1 - 2.0 * (qy_des*qy_des + qz_des*qz_des);
         phi_des[1] = atan2(siny_cosp,cosy_cosp);
         multi_turn_phi_des = multi_turn_angle(phi_des,&index_multi_turn_phi_des);
-
     }
 
     // Callback function 2 : State
@@ -408,6 +421,7 @@ class tracking_controller{
         multi_turn_phi_robot = multi_turn_angle(phi_robot,&index_multi_turn_phi_robot);
     }
 
+    // Callback function 3 : Goal
     void callback_goal(const PoseStamped::ConstPtr& goal_msg){
 
         x_goal = goal_msg->pose.position.x;
