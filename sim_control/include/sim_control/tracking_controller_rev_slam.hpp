@@ -59,7 +59,8 @@ class tracking_controller{
     int size_of_traj;
 
 
-    // Desired trajectory : vel, position, orientation
+    // Desired trajectory : acceleration, vel, position, orientation
+    double ax_des = 0, ay_des = 0, aphi_des = 0;
     double vx_des = 0, vy_des = 0, vphi_des = 0;
     double x_des = 0, y_des = 0;
     double qw_des = 1, qx_des = 0, qy_des = 0, qz_des = 0;
@@ -86,8 +87,8 @@ class tracking_controller{
     double multi_turn_phi_robot = 0;
 
     // Controller Gain
-    const double K_v[3] = {1.5,1.5,1.5};
-    const double K_p[3] = {3.0,3.0,3.0};
+    const double K_v[3] = {1.0,1.0,1.0};
+    const double K_p[3] = {5.0,5.0,5.0};
     const double K_i[3] = {0.01,0.01,0.01};
 
     // Error : linear vel, angular vel, position, orientation
@@ -169,9 +170,10 @@ class tracking_controller{
         phi_err = phi_goal - phi_robot[1];
 
                 // Acceleration - Velocity error
-        ax_cmd   = K_v[0]*(vx_des - vx_robot) + K_p[0] * x_err;
-        ay_cmd   = K_v[1]*(vy_des - vy_robot) + K_p[1] * y_err;
-        aphi_cmd = K_v[2]*(vphi_des - vphi_robot) + K_p[2] * phi_err;
+        ax_cmd   = ax_des + K_v[0] * (vx_des - vx_robot);
+        ay_cmd   = ay_des + K_v[1] * (vy_des - vy_robot);
+        aphi_cmd = aphi_des + K_v[2] * (vphi_des - vphi_robot);
+
 
         vx_accumul += ax_cmd * dt;
         vy_accumul += ay_cmd * dt;
@@ -188,7 +190,7 @@ class tracking_controller{
             regulation_control_enable = true;
         }
 
-        //regulation_control_enable = false;
+        regulation_control_enable = false;
         // 2. Regulation controller
         if(regulation_control_enable){
 
@@ -385,6 +387,10 @@ class tracking_controller{
         **/        
 
         //Trajectory Generation 
+
+        ax_des = traj_msg -> acceleration.linear.x;
+        ay_des = traj_msg -> acceleration.linear.y;
+        aphi_des = traj_msg -> acceleration.angular.z;
         
         vx_des = traj_msg -> velocity.linear.x;
         vy_des = traj_msg -> velocity.linear.y;
