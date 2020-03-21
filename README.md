@@ -10,7 +10,7 @@ wheel separation info
 
 --> l_a , and l_b
 
-Execution of tracking controller
+1. Execution of tracking controller in actual mobile robot
 
 Xavier $ sudo ifconfig eth1 192.168.3.70
 
@@ -30,4 +30,16 @@ Xavier $ rosrun vehicle_control wheel_odometry
 
 Xavier $ rosrun sim_control tracking_controller_rev
 
-Laptop $ rosrun path_plan velicity_plan
+Laptop $ rosrun path_planner velicity_plan
+
+2. Execution of tracking controller in simulation
+
+$ roslaunch mobile_platform_description gazebo_v1.launch
+
+$ roslaunch dual_arm_localization gmapping.launch
+
+$ rosrun sim_control motor_dynamics
+
+$ rosrun sim_control tracking_controller_rev
+
+$ rosrun path_planner velocity_plan
