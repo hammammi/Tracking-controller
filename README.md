@@ -20,13 +20,11 @@ Xavier $ roslaunch velodyne_pointcloud VLP16_points.launch
 
 Check out whether the scan data is published well.
 
+RaspberryPi $ rosrun epos_tutorial controller_pdo
+
 Xavier $ roslaunch dual_arm_bringup bringup.launch
 
 Laptop $ roslaunch dual_arm_localization gmapping.launch
-
-RaspberryPi $ rosrun epos_tutorial controller_pdo
-
-Xavier $ rosrun vehicle_control wheel_odometry
 
 Xavier $ rosrun sim_control tracking_controller_rev
 
