@@ -1,20 +1,6 @@
 /** Code contents
-1. Recieve desired velocity, position, and orientation of the robot
 
-
-2. Commend velocity of the robot
-
-Eqn 1
-ddrdt2_cmd = ddrdt2_des + K_vel * (drdt_des - drdt_robot) + K_pos * (r_des - r_robot)
-where r = [x y phi]'
-
-By integrating ddrdt2_cmd,
-get commend velocity of the robot : drdt_cmd
-
-3. motor velocity and Clampping
-Applying the inverse kinematics...
-obtain the motor velocities.
-Find out the maximum motor velocity and then clampping
+PID controller
 
 **/
 #include "ros/ros.h"
@@ -50,7 +36,6 @@ class tracking_controller{
 
     public:
 
-    bool regulation_control_enable = false;
     bool init_pos = true;
     // Robot index
     uint16_t robot_index = 0;
@@ -87,21 +72,21 @@ class tracking_controller{
     double multi_turn_phi_robot = 0;
 
     // Controller Gain
-    const double K_v[3] = {0.0,0.0,0.0};
-    const double K_p[3] = {1.0,1.0,1.0};
-    const double K_i[3] = {0.01,0.01,0.01};
+    const double K_p[3] = {10.0,10.0,10.0};
+    const double K_i[3] = {0.0,0.0,0.0};
+    const double K_d[3] = {1.0,1.0,1.0};
 
-    // Error : linear vel, angular vel, position, orientation
+    // P error, I error, D error
     double x_err = 0, y_err = 0, phi_err = 0;
+    double vx_accumul = 0, vy_accumul = 0, vphi_accumul = 0;
+    double vx_err = 0, vy_err = 0, vphi_err = 0;
 
-    double x_accumul_err = 0, y_accumul_err = 0, phi_accumul_err = 0;
 
     // Commend velocity in the global frame
     double ax_cmd = 0, ay_cmd = 0, aphi_cmd = 0;
 
     // Commend Velocity
     double vx_cmd = 0, vy_cmd = 0, vphi_cmd = 0;
-    double vx_accumul = 0, vy_accumul = 0, vphi_accumul = 0;
 
     // Clamping info : Limited motor vel = 6000 RPM
     const int motor_vel_lim = 3000; 
@@ -131,7 +116,7 @@ class tracking_controller{
     // Subscriber Declaration
     void subscriber_declaration(){
         // Subscribe
-        subscriber_state = nh_.subscribe("/odom",1,&tracking_controller::callback_state,this);
+        subscriber_state = nh_.subscribe("/wheel_odom",1,&tracking_controller::callback_state,this);
         subscriber_trajectory = nh_.subscribe("/move_base/TebLocalPlannerROS/teb_feedback",1,&tracking_controller::callback_traj,this);
         subscriber_goal = nh_.subscribe("/move_base_simple/goal",1,&tracking_controller::callback_goal,this);
     }
@@ -145,21 +130,15 @@ class tracking_controller{
 
 
         tf::StampedTransform transform;
-        nav_msgs::Odometry slam_vel;
 
         try{
             listener_.lookupTransform("map","base_footprint",ros::Time(0),transform);
-            //listener_.lookupTwist("base_footprint","map",ros::Time(0),ros::Duration(0.005),slam_vel.twist.twist);
-
-            //vx_robot = slam_vel.twist.twist.linear.x;
-            //vy_robot = slam_vel.twist.twist.linear.y;
-            //vphi_robot = slam_vel.twist.twist.angular.z;
-
+            
             x_robot = transform.getOrigin().x();
             y_robot = transform.getOrigin().y();
 
-            ROS_INFO("x_robot y_robot phi_robot (SLAM) : %lf, %lf %lf",x_robot,y_robot,phi_robot[1]*180/M_PI);
-            //ROS_INFO("vx robot vy_robot (SLAM) : %lf, %lf",vx_robot, vy_robot);
+            //ROS_INFO("x_robot y_robot (SLAM) : %lf, %lf",x_robot,y_robot);
+            ROS_INFO("vx robot vy_robot (SLAM) : %lf, %lf",vx_robot, vy_robot);
 
 
             tf::Quaternion quat = transform.getRotation();
@@ -179,43 +158,24 @@ class tracking_controller{
         phi_err = phi_goal - phi_robot[1];
 
                 // Acceleration - Velocity error
-        ax_cmd   = ax_des + K_v[0] * (vx_des - vx_robot);
-        ay_cmd   = ay_des + K_v[1] * (vy_des - vy_robot);
-        aphi_cmd = aphi_des + K_v[2] * (vphi_des - vphi_robot);
+
+        vx_err = vx_des - vx_robot;
+        vy_err = vy_des - vy_robot;
+        vphi_err = vphi_des - vphi_robot;
+
+        ax_cmd   = ax_des + K_i[0] * vx_err;
+        ay_cmd   = ay_des + K_i[1] * vy_err;
+        aphi_cmd = aphi_des + K_i[2] * vphi_err;
 
 
         vx_accumul += ax_cmd * dt;
         vy_accumul += ay_cmd * dt;
         vphi_accumul += aphi_cmd * dt;
 
-        vx_cmd = vx_accumul + K_p[0] * x_err;
-        vy_cmd = vy_accumul + K_p[1] * y_err;
-        vphi_cmd = vphi_accumul + K_p[2] * phi_err;
-        
-        if(sqrt(pow(x_goal-x_robot,2)+pow(y_goal-y_robot,2))>0.10){
-            regulation_control_enable = false;
-        }else{
-            regulation_control_enable = true;
-        }
-
-        regulation_control_enable = false;
-        // 2. Regulation controller
-        if(regulation_control_enable){
-
-            x_err    = (x_goal - x_robot)*cos(phi_robot[1]) - (y_goal - y_robot)*sin(phi_robot[1]);
-            y_err    = (x_goal - x_robot)*sin(phi_robot[1]) + (y_goal - y_robot)*cos(phi_robot[1]);
-
-           x_accumul_err += x_err * dt;
-           y_accumul_err += y_err * dt;
-           phi_accumul_err += phi_accumul_err * dt;
-           
-           vx_cmd = K_p[0] * x_err + K_i[0] * x_accumul_err;
-           vy_cmd = K_p[1] * y_err + K_i[1] * y_accumul_err;
-           vphi_cmd = K_p[2] * phi_err + K_i[2] * phi_accumul_err;
-
-           ROS_INFO("dt : %lf",dt);
-
-       }
+        // PID Control
+        vx_cmd = K_p[0] * x_err + vx_accumul + K_d[0] * vx_err;
+        vy_cmd = K_p[1] * y_err + vy_accumul + K_d[1] * vy_err;
+        vphi_cmd = K_p[2] * phi_err + vphi_accumul + K_d[2] * vphi_err;
        
         // Inverse Kinematics
         cmd_motor_vel = inverse_kinematics();
@@ -230,15 +190,11 @@ class tracking_controller{
                          
         cmd_motor_vel = clamping(cmd_motor_vel);
 
-        if(sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot))<0.030 && fabs(phi_robot[1]-phi_goal)<0.01 || init_pos == true){
+        if(sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot))<0.010 && fabs(phi_robot[1]-phi_goal)<0.02 || init_pos == true){
             cmd_motor_vel.w[0] = 0;
             cmd_motor_vel.w[1] = 0;
             cmd_motor_vel.w[2] = 0;
             cmd_motor_vel.w[3] = 0;
-
-            x_accumul_err = 0;
-            y_accumul_err = 0;
-            phi_accumul_err = 0;
 
             ax_cmd = 0;
             ay_cmd = 0;
@@ -248,7 +204,7 @@ class tracking_controller{
             vy_accumul = 0;
             vphi_accumul = 0;
 
-            //init_pos = true;
+                //init_pos = true;
 
             ROS_INFO("Stop");
             ROS_INFO("distance error : %lf phi_err : %lf",sqrt((x_goal-x_robot)*(x_goal-x_robot)+(y_goal-y_robot)*(y_goal-y_robot)),fabs(phi_robot[1]-phi_goal)*180/M_PI);
@@ -263,6 +219,7 @@ class tracking_controller{
         error_msg.pose.pose.position.y = y_err;
         
         // Twist --> Moving average velocity to check
+        error_msg.header.stamp = ros::Time::now();
         error_msg.twist.twist.linear.x = vx_cmd-vx_robot;
         error_msg.twist.twist.linear.y = vy_cmd-vy_robot;
         error_msg.twist.twist.angular.z = vphi_cmd-vphi_robot;
@@ -318,24 +275,22 @@ class tracking_controller{
     void publish_slam_pose(){
         nav_msgs::Odometry slam_pose;
 
+        slam_pose.header.stamp = ros::Time::now();
         // Get SLAM position
         slam_pose.pose.pose.position.x = x_robot;
         slam_pose.pose.pose.position.y = y_robot;
-
+    
         // Get SLAM orientation
+        tf::Quaternion quat = Transform.getRotation();
         geometry_msgs::Quaternion slam_quat = tf::createQuaternionMsgFromYaw(phi_robot[1]);
         slam_pose.pose.pose.orientation = slam_quat;
-
-        // Get SLAM velocity
-        slam_pose.twist.twist.linear.x = vx_robot;
-        slam_pose.twist.twist.linear.y = vy_robot;
-        slam_pose.twist.twist.angular.z = vphi_robot;
 
         publisher_slam_pose.publish(slam_pose);
     }
 
     void desired_traj(){
         nav_msgs::Odometry des_traj;
+        des_traj.header.stamp = ros::Time::now();
         des_traj.pose.pose.position.x = x_des;
         des_traj.pose.pose.position.y = y_des;
         des_traj.twist.twist.linear.x = vx_des;
@@ -413,11 +368,6 @@ class tracking_controller{
 
     // Callback function 2 : State
     void callback_state(const Odometry::ConstPtr& state_msg){
-        
-        // Robot Velocity 
-        vx_robot = state_msg -> twist.twist.linear.x;
-        vy_robot = state_msg -> twist.twist.linear.y;
-        vphi_robot = state_msg -> twist.twist.angular.z;
 
         phi_robot[0] = phi_robot[1];
         // Conversion from Quaternion to euler angle
