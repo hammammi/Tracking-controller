@@ -281,7 +281,6 @@ class tracking_controller{
         slam_pose.pose.pose.position.y = y_robot;
     
         // Get SLAM orientation
-        tf::Quaternion quat = Transform.getRotation();
         geometry_msgs::Quaternion slam_quat = tf::createQuaternionMsgFromYaw(phi_robot[1]);
         slam_pose.pose.pose.orientation = slam_quat;
 
