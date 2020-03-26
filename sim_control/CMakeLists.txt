@@ -14,10 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_message_files(
   FILES
-  cmdMsg.msg
   desiredMsg.msg
-  groundMsg.msg
-  slamposeMsg.msg
   motorDynamics.msg
 )
 
