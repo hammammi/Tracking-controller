@@ -1,7 +1,5 @@
 <launch>
-
-    <node pkg  = "sim_control"
-          type = "tracking_controller_rev"
-	  name = "tracking_controller"/>
-
+    <node pkg = "sim_control" type = "motor_dynamics" name="motor" />
+    <node pkg  = "sim_control" type = "tracking_controller_pid" name = "tracking_controller"/>
+    
 </launch>

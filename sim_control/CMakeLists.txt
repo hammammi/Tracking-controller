@@ -46,6 +46,10 @@ add_executable(tracking_controller_rev src/tracking_controller_rev.cpp)
 target_link_libraries(tracking_controller_rev ${catkin_LIBRARIES})
 add_dependencies(tracking_controller_rev sim_control_generate_messages_cpp)
 
+add_executable(tracking_controller_pid src/tracking_controller_pid.cpp)
+target_link_libraries(tracking_controller_pid ${catkin_LIBRARIES})
+add_dependencies(tracking_controller_pid sim_control_generate_messages_cpp)
+
 add_executable(motor_dynamics src/motor_dynamics.cpp)
 target_link_libraries(motor_dynamics ${catkin_LIBRARIES})
 add_dependencies(motor_dynamics sim_control_generate_messages_cpp)
