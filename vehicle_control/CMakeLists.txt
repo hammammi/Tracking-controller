@@ -21,6 +21,9 @@ find_package(catkin REQUIRED COMPONENTS
     gnd.msg
     positionMsg.msg
     timeLoop.msg
+    as5047Msg.msg
+    vl53l1xMsg.msg
+    noise.msg
   )
 
 
@@ -40,6 +43,7 @@ catkin_package(
     roscpp
     std_msgs
     sensor_msgs
+    message_runtime
 )
 
 include_directories(
